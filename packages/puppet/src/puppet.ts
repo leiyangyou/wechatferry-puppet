@@ -714,7 +714,31 @@ export class WechatferryPuppet extends PUPPET.Puppet {
     friendshipId: string,
   ): Promise<void> {
     log.verbose('WechatferryPuppet', 'friendshipAccept(%s)', friendshipId)
-    throw new Error(`friendshipAccept(${friendshipId}) called failed: Method not supported.`)
+
+    // Get the cached friendship payload which contains v3/v4 tokens from the friend request
+    const payload = await this.cacheManager.getFriendship(friendshipId)
+    if (!payload) {
+      throw new Error(`friendshipAccept(${friendshipId}) called failed: Friendship not found in cache.`)
+    }
+
+    // For FriendshipReceive type, the payload contains stranger (v3) and ticket (v4)
+    const friendshipPayload = payload as PUPPET.payloads.FriendshipReceive
+    const v3 = friendshipPayload.stranger
+    const v4 = friendshipPayload.ticket
+    const scene = friendshipPayload.scene ?? 30 // default to QR code scene
+
+    if (!v3 || !v4) {
+      throw new Error(`friendshipAccept(${friendshipId}) called failed: Missing v3/v4 tokens. This may not be a friend request that can be accepted.`)
+    }
+
+    log.verbose('WechatferryPuppet', 'friendshipAccept() calling acceptFriend with v3=%s, v4=%s, scene=%s', v3.substring(0, 20) + '...', v4.substring(0, 20) + '...', scene)
+
+    const status = this.agent.wcf.acceptFriend(v3, v4, scene)
+    if (status !== 1) {
+      throw new Error(`friendshipAccept(${friendshipId}) called failed: acceptFriend returned status=${status}`)
+    }
+
+    log.verbose('WechatferryPuppet', 'friendshipAccept(%s) succeeded', friendshipId)
   }
 
   override async friendshipRawPayloadParser(rawPayload: any): Promise<PUPPET.payloads.Friendship> {
